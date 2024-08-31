@@ -1,53 +1,11 @@
+import { ImageResponse } from '@vercel/og';
 import fetchRSS from '../../utils/fetchRSS';  // Adjust the path as needed
 
 const IMAGE_WIDTH = 1200;
 const IMAGE_HEIGHT = 630;
-const MAX_LINES = 7; // Maximum number of lines that can fit in the image
-const MAX_CHARS_PER_LINE = 30; // Maximum characters per line
-const FONT_SIZE = 40; // Font size to ensure readability
-
-function wrapText(text) {
-  const words = text.split(' ');
-  let lines = [];
-  let currentLine = '';
-
-  for (let word of words) {
-    if ((currentLine + word).length <= MAX_CHARS_PER_LINE) {
-      currentLine += (currentLine ? ' ' : '') + word;
-    } else {
-      lines.push(currentLine);
-      currentLine = word;
-    }
-
-    if (lines.length === MAX_LINES - 1) {
-      currentLine += ' ' + words.slice(words.indexOf(word) + 1).join(' ');
-      if (currentLine.length > MAX_CHARS_PER_LINE - 3) {
-        currentLine = currentLine.slice(0, MAX_CHARS_PER_LINE - 3) + '...';
-      }
-      lines.push(currentLine);
-      break;
-    }
-  }
-
-  if (currentLine && lines.length < MAX_LINES) {
-    lines.push(currentLine);
-  }
-
-  return lines;
-}
-
-function formatTextForPlaceholder(lines) {
-  let formattedText = lines.map(line => encodeURIComponent(line)).join('%0A');
-  
-  // Add line breaks based on the total character count
-  if (formattedText.length < 90) {
-    formattedText += '%0A'; // One line break
-  } else {
-    formattedText += '%0A%0A'; // Two line breaks
-  }
-
-  return formattedText;
-}
+const FONT_SIZE_TITLE = 60; // Font size for the title
+const FONT_SIZE_DESC = 30; // Font size for the description
+const PADDING = 40; // Padding around the text
 
 export default async function handleAction(req, res) {
   if (req.method !== 'POST' && req.method !== 'GET') {
@@ -74,12 +32,47 @@ export default async function handleAction(req, res) {
     const nextIndex = (currentIndex + 1) % articles.length;
     const prevIndex = (currentIndex - 1 + articles.length) % articles.length;
 
-    // Wrap and format the full title text
-    const wrappedTitleLines = wrapText(currentArticle.title);
-    const formattedTitle = formatTextForPlaceholder(wrappedTitleLines);
-
-    // Generate the placeholder image with the wrapped and formatted article title
-    const imageUrl = `https://place-hold.it/${IMAGE_WIDTH}x${IMAGE_HEIGHT}/4B0082/FFFFFF/png?text=${formattedTitle}&fontsize=${FONT_SIZE}&align=middle`;
+    const imageUrl = new ImageResponse(
+      (
+        <div
+          style={{
+            width: IMAGE_WIDTH,
+            height: IMAGE_HEIGHT,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: PADDING,
+            backgroundColor: '#4B0082',
+            color: 'white',
+            fontFamily: 'Arial, sans-serif',
+          }}
+        >
+          <h1
+            style={{
+              fontSize: FONT_SIZE_TITLE,
+              fontWeight: 'bold',
+              textAlign: 'center',
+              marginBottom: '20px',
+            }}
+          >
+            {currentArticle.title}
+          </h1>
+          <p
+            style={{
+              fontSize: FONT_SIZE_DESC,
+              textAlign: 'center',
+            }}
+          >
+            {currentArticle.description}
+          </p>
+        </div>
+      ),
+      {
+        width: IMAGE_WIDTH,
+        height: IMAGE_HEIGHT,
+      }
+    );
 
     res.status(200).setHeader('Content-Type', 'text/html').send(`
       <!DOCTYPE html>
@@ -114,7 +107,29 @@ export default async function handleAction(req, res) {
   } catch (error) {
     console.error('Error processing request:', error);
 
-    const errorImageUrl = `https://place-hold.it/${IMAGE_WIDTH}x${IMAGE_HEIGHT}/4B0082/FFFFFF/png?text=${encodeURIComponent('Error: ' + error.message)}&fontsize=${FONT_SIZE}&align=middle`;
+    const errorImageUrl = new ImageResponse(
+      (
+        <div
+          style={{
+            width: IMAGE_WIDTH,
+            height: IMAGE_HEIGHT,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#4B0082',
+            color: 'white',
+            fontFamily: 'Arial, sans-serif',
+          }}
+        >
+          <p>Error: {error.message}</p>
+        </div>
+      ),
+      {
+        width: IMAGE_WIDTH,
+        height: IMAGE_HEIGHT,
+      }
+    );
+
     res.status(200).setHeader('Content-Type', 'text/html').send(`
       <!DOCTYPE html>
       <html>
@@ -128,7 +143,6 @@ export default async function handleAction(req, res) {
         </head>
         <body>
           <h1>Error Occurred</h1>
-          <p>${error.message}</p>
           <img src="${errorImageUrl}" alt="Error" />
         </body>
       </html>
