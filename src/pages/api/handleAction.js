@@ -1,15 +1,13 @@
 import { ImageResponse } from '@vercel/og';
 import fetchRSS from '../../utils/fetchRSS';  // Adjust the path as needed
 
-const IMAGE_WIDTH = 1200;
-const IMAGE_HEIGHT = 630;
-const FONT_SIZE_TITLE = 60; // Font size for the title
-const FONT_SIZE_DESC = 30; // Font size for the description
-const PADDING = 40; // Padding around the text
+export const config = {
+  runtime: 'experimental-edge', // Required for Vercel OG
+};
 
-export default async function handleAction(req, res) {
+export default async function handleAction(req) {
   if (req.method !== 'POST' && req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
+    return new Response('Method Not Allowed', { status: 405 });
   }
 
   try {
@@ -32,17 +30,18 @@ export default async function handleAction(req, res) {
     const nextIndex = (currentIndex + 1) % articles.length;
     const prevIndex = (currentIndex - 1 + articles.length) % articles.length;
 
-    const imageUrl = new ImageResponse(
+    // Generate the PNG image using Vercel OG
+    const imageResponse = new ImageResponse(
       (
         <div
           style={{
-            width: IMAGE_WIDTH,
-            height: IMAGE_HEIGHT,
+            width: '1200px',
+            height: '630px',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: PADDING,
+            padding: '40px',
             backgroundColor: '#4B0082',
             color: 'white',
             fontFamily: 'Arial, sans-serif',
@@ -50,7 +49,7 @@ export default async function handleAction(req, res) {
         >
           <h1
             style={{
-              fontSize: FONT_SIZE_TITLE,
+              fontSize: '60px',
               fontWeight: 'bold',
               textAlign: 'center',
               marginBottom: '20px',
@@ -60,7 +59,7 @@ export default async function handleAction(req, res) {
           </h1>
           <p
             style={{
-              fontSize: FONT_SIZE_DESC,
+              fontSize: '30px',
               textAlign: 'center',
             }}
           >
@@ -69,12 +68,17 @@ export default async function handleAction(req, res) {
         </div>
       ),
       {
-        width: IMAGE_WIDTH,
-        height: IMAGE_HEIGHT,
+        width: 1200,
+        height: 630,
       }
     );
 
-    res.status(200).setHeader('Content-Type', 'text/html').send(`
+    const imageBuffer = await imageResponse.arrayBuffer();
+    const imageBase64 = Buffer.from(imageBuffer).toString('base64');
+    const imageUrl = `data:image/png;base64,${imageBase64}`;
+
+    return new Response(
+      `
       <!DOCTYPE html>
       <html>
         <head>
@@ -103,16 +107,23 @@ export default async function handleAction(req, res) {
           <img src="${imageUrl}" alt="${currentArticle.title}" />
         </body>
       </html>
-    `);
+      `,
+      {
+        headers: {
+          'Content-Type': 'text/html',
+        },
+      }
+    );
   } catch (error) {
     console.error('Error processing request:', error);
 
-    const errorImageUrl = new ImageResponse(
+    // Generate an error image
+    const errorImageResponse = new ImageResponse(
       (
         <div
           style={{
-            width: IMAGE_WIDTH,
-            height: IMAGE_HEIGHT,
+            width: '1200px',
+            height: '630px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -125,12 +136,17 @@ export default async function handleAction(req, res) {
         </div>
       ),
       {
-        width: IMAGE_WIDTH,
-        height: IMAGE_HEIGHT,
+        width: 1200,
+        height: 630,
       }
     );
 
-    res.status(200).setHeader('Content-Type', 'text/html').send(`
+    const errorImageBuffer = await errorImageResponse.arrayBuffer();
+    const errorImageBase64 = Buffer.from(errorImageBuffer).toString('base64');
+    const errorImageUrl = `data:image/png;base64,${errorImageBase64}`;
+
+    return new Response(
+      `
       <!DOCTYPE html>
       <html>
         <head>
@@ -146,6 +162,12 @@ export default async function handleAction(req, res) {
           <img src="${errorImageUrl}" alt="Error" />
         </body>
       </html>
-    `);
+      `,
+      {
+        headers: {
+          'Content-Type': 'text/html',
+        },
+      }
+    );
   }
 }
