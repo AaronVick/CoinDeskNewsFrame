@@ -1,36 +1,54 @@
+import axios from 'axios';
 import { ImageResponse } from '@vercel/og';
-import fetchRSS from '../../utils/fetchRSS';  // Adjust the path as needed
 
 export const config = {
-  runtime: 'experimental-edge', // Required for Vercel OG
+  runtime: 'nodejs', // Use nodejs runtime to avoid edge runtime issues
 };
 
-export default async function handleAction(req) {
-  if (req.method !== 'POST' && req.method !== 'GET') {
-    return new Response('Method Not Allowed', { status: 405 });
-  }
+async function fetchArticles() {
+  const url = 'https://www.coindesk.com/arc/outboundfeeds/rss/';
 
   try {
-    const category = 'top';
-    let currentIndex = 0;
+    const response = await axios.get(url);
+    const xml2js = require('xml2js');
+    const parsedData = await xml2js.parseStringPromise(response.data, { mergeAttrs: true });
 
+    const articles = parsedData.rss.channel[0].item.map(item => ({
+      title: item.title[0],
+      link: item.link[0],
+      description: item.description ? item.description[0] : '',
+      pubDate: item.pubDate[0],
+      author: item.author ? item.author[0] : '',
+    }));
+
+    return articles;
+  } catch (error) {
+    console.error('Error fetching articles:', error.message);
+    throw new Error('Failed to fetch articles');
+  }
+}
+
+export default async function handler(req, res) {
+  console.log('Received request to handleAction handler');
+  console.log('Request method:', req.method);
+
+  try {
+    if (req.method !== 'GET' && req.method !== 'POST') {
+      return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
+    }
+
+    let currentIndex = 0;
     if (req.query.index) {
       currentIndex = parseInt(req.query.index, 10);
     }
 
-    const { articles } = await fetchRSS(category);
-
-    if (!articles || articles.length === 0) {
-      throw new Error(`No articles found in the RSS feed.`);
-    }
-
+    const articles = await fetchArticles();
     currentIndex = (currentIndex + articles.length) % articles.length;
 
     const currentArticle = articles[currentIndex];
     const nextIndex = (currentIndex + 1) % articles.length;
     const prevIndex = (currentIndex - 1 + articles.length) % articles.length;
 
-    // Generate the PNG image using Vercel OG
     const imageResponse = new ImageResponse(
       (
         <div
@@ -74,17 +92,15 @@ export default async function handleAction(req) {
     );
 
     const imageBuffer = await imageResponse.arrayBuffer();
-    const imageBase64 = Buffer.from(imageBuffer).toString('base64');
-    const imageUrl = `data:image/png;base64,${imageBase64}`;
+    const pngBase64 = Buffer.from(imageBuffer).toString('base64');
 
-    return new Response(
-      `
+    res.setHeader('Content-Type', 'text/html');
+    return res.status(200).send(`
       <!DOCTYPE html>
       <html>
         <head>
-          <title>${currentArticle.title}</title>
           <meta property="fc:frame" content="vNext" />
-          <meta property="fc:frame:image" content="${imageUrl}" />
+          <meta property="fc:frame:image" content="data:image/png;base64,${pngBase64}" />
 
           <meta property="fc:frame:button:1" content="Next" />
           <meta property="fc:frame:button:1:action" content="post" />
@@ -103,71 +119,25 @@ export default async function handleAction(req) {
           <meta property="fc:frame:button:4:post_url" content="${process.env.NEXT_PUBLIC_BASE_URL}" />
         </head>
         <body>
-          <h1>${currentArticle.title}</h1>
-          <img src="${imageUrl}" alt="${currentArticle.title}" />
+          <img src="data:image/png;base64,${pngBase64}" alt="${currentArticle.title}" />
         </body>
       </html>
-      `,
-      {
-        headers: {
-          'Content-Type': 'text/html',
-        },
-      }
-    );
+    `);
   } catch (error) {
-    console.error('Error processing request:', error);
-
-    // Generate an error image
-    const errorImageResponse = new ImageResponse(
-      (
-        <div
-          style={{
-            width: '1200px',
-            height: '630px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#4B0082',
-            color: 'white',
-            fontFamily: 'Arial, sans-serif',
-          }}
-        >
-          <p>Error: {error.message}</p>
-        </div>
-      ),
-      {
-        width: 1200,
-        height: 630,
-      }
-    );
-
-    const errorImageBuffer = await errorImageResponse.arrayBuffer();
-    const errorImageBase64 = Buffer.from(errorImageBuffer).toString('base64');
-    const errorImageUrl = `data:image/png;base64,${errorImageBase64}`;
-
-    return new Response(
-      `
+    console.error('Error processing request:', error.message);
+    return res.status(500).send(`
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Error Occurred</title>
           <meta property="fc:frame" content="vNext" />
-          <meta property="fc:frame:image" content="${errorImageUrl}" />
-          <meta property="fc:frame:button:1" content="Home" />
-          <meta property="fc:frame:button:1:action" content="post" />
-          <meta property="fc:frame:button:1:post_url" content="${process.env.NEXT_PUBLIC_BASE_URL}" />
+          <meta property="fc:frame:image" content="data:image/png;base64,${DEFAULT_PLACEHOLDER_IMAGE}" />
+          <meta property="fc:frame:button:1" content="Try Again" />
+          <meta property="fc:frame:post_url" content="${process.env.NEXT_PUBLIC_BASE_URL}/api/handleAction" />
         </head>
         <body>
-          <h1>Error Occurred</h1>
-          <img src="${errorImageUrl}" alt="Error" />
+          <p>Error occurred. Please try again later.</p>
         </body>
       </html>
-      `,
-      {
-        headers: {
-          'Content-Type': 'text/html',
-        },
-      }
-    );
+    `);
   }
 }
